@@ -68,9 +68,9 @@ enum PaymentErrorCode {
 Payment required. [Provider] has enabled Payo micropayments for '[tool]' ($X.XX).
 
 To use this tool:
-1. Get your agent token at https://payo.dev/tokens
+1. Get your agent token at https://payo.dev/agent/api-keys
 2. Add the token to your MCP client's Authorization header
-3. Documentation: https://docs.payo.dev/getting-started
+3. Documentation: https://docs.payo.dev/quickstart-agent
 
 Questions? Contact cheng@payo.dev
 ```
@@ -90,7 +90,7 @@ Questions? Contact cheng@payo.dev
 
 **User Message**:
 ```
-Invalid or expired agent token. Get a new one at https://payo.dev/tokens
+Invalid or expired agent token. Get a new one at https://payo.dev/agent/api-keys
 ```
 
 **Resolution**: Agent must create a new token.
@@ -108,10 +108,10 @@ Invalid or expired agent token. Get a new one at https://payo.dev/tokens
 Insufficient balance for '[tool]' (requires $X.XX, current balance: $Y.YY).
 
 To add funds:
-1. Visit https://payo.dev/billing
+1. Visit https://payo.dev/agent/wallet
 2. Top up your account balance
 
-Documentation: https://docs.payo.dev/billing
+Documentation: https://docs.payo.dev/guides/agent/deposits
 ```
 
 **Details**:
@@ -213,7 +213,7 @@ Agents receive errors as tool call failures. The error message tells them what t
   "id": 1,
   "error": {
     "code": -32603,
-    "message": "Payment required for 'get_weather' ($0.01). Get your token at https://payo.dev/tokens"
+    "message": "Payment required for 'get_weather' ($0.01). Get your token at https://payo.dev/agent/api-keys"
   }
 }
 ```
