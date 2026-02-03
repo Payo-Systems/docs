@@ -1,0 +1,111 @@
+---
+title: "Deposits & Balance"
+description: "Add funds and manage your agent balance"
+---
+
+## Overview
+
+Your **credits balance** is the pool of funds your agents can spend on paid MCP tools. When a tool is called, its price is deducted from your balance.
+
+## Viewing Your Balance
+
+Go to **Wallet** in your dashboard to see:
+
+- **Current balance** - Available credits in USD
+- **Recent transactions** - Charges and deposits
+- **Spending trends** - Usage over time
+
+## Adding Funds
+
+<Note>
+Deposits are coming soon. During beta, contact cheng@payo.dev to add credits to your account.
+</Note>
+
+Once available, depositing will work like this:
+
+<Steps>
+  <Step title="Go to Wallet">
+    Navigate to **Wallet** in your dashboard.
+  </Step>
+  <Step title="Click Deposit">
+    Click the **Deposit** button.
+  </Step>
+  <Step title="Enter amount">
+    Enter the USD amount you want to deposit (minimum $5).
+  </Step>
+  <Step title="Complete payment">
+    Pay via credit card or bank transfer.
+  </Step>
+</Steps>
+
+Credits are added instantly after payment confirmation.
+
+## Understanding Charges
+
+Each tool call deducts its price from your balance:
+
+| Tool | Price | 100 calls |
+|------|-------|-----------|
+| `get_weather` | $0.01 | $1.00 |
+| `analyze_image` | $0.05 | $5.00 |
+| `generate_report` | $0.10 | $10.00 |
+
+Free tools (price = $0) don't affect your balance.
+
+## Transaction History
+
+Your wallet shows all transactions:
+
+```
+-$0.05  get_forecast        WeatherAPI    2 min ago
+-$0.01  get_weather         WeatherAPI    5 min ago
+-$0.02  analyze_sentiment   TextAPI       1 hour ago
++$50.00 Deposit             -             Yesterday
+```
+
+Each entry includes:
+- **Amount** - Positive for deposits, negative for charges
+- **Tool/Type** - What the charge was for
+- **Provider** - Who received the payment
+- **Time** - When it occurred
+
+## Low Balance Warnings
+
+When your balance drops below $1.00, you'll see a warning in your dashboard.
+
+If your balance reaches $0, tool calls will fail with `INSUFFICIENT_BALANCE`.
+
+<Tip>
+Set up a reminder to check your balance weekly, or deposit larger amounts less frequently.
+</Tip>
+
+## Budgeting
+
+To estimate monthly costs:
+
+1. **Identify tools you use** - List the MCP tools your agent calls
+2. **Check their prices** - Ask the provider or check their docs
+3. **Estimate call volume** - How many calls per day/week?
+4. **Calculate**: `calls × price = cost`
+
+**Example:**
+- 1,000 weather calls/day × $0.01 = $10/day = $300/month
+- 100 analysis calls/day × $0.05 = $5/day = $150/month
+- **Total**: ~$450/month
+
+## FAQs
+
+<AccordionGroup>
+  <Accordion title="What happens if my balance goes negative?">
+    It can't. Payo checks your balance before each tool call. If you don't have enough, the call fails with `INSUFFICIENT_BALANCE`.
+  </Accordion>
+  <Accordion title="Can I get a refund?">
+    Contact cheng@payo.dev for refund requests. Unused credits can typically be refunded within 30 days of deposit.
+  </Accordion>
+  <Accordion title="Do credits expire?">
+    No, credits don't expire. Your balance remains until spent.
+  </Accordion>
+  <Accordion title="Can I set spending limits?">
+    Coming soon. We're working on daily/monthly limits and alerts.
+  </Accordion>
+</AccordionGroup>

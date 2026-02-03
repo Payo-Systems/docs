@@ -1,0 +1,210 @@
+---
+title: "withPayments()"
+description: "Main function to enable payments on your MCP server"
+---
+
+## Signature
+
+```typescript
+function withPayments<T extends McpServerLike>(
+  mcpServer: T,
+  config: PaymentConfig
+): T
+```
+
+## Parameters
+
+### mcpServer
+
+Your MCP server instance created with `@modelcontextprotocol/sdk`:
+
+```typescript
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
+const server = new McpServer({
+  name: 'my-server',
+  version: '1.0.0'
+});
+```
+
+The SDK is compatible with any object that has:
+- A `.server` property (the internal low-level server)
+- The `.server.setRequestHandler()` method
+
+### config
+
+A `PaymentConfig` object with your settings:
+
+```typescript
+interface PaymentConfig {
+  // Required
+  apiKey: string;
+  pricing: PricingConfig;
+
+  // Optional
+  platformUrl?: string;
+  failOpen?: boolean;
+  requireAuthForAllTools?: boolean;
+  logLevel?: LogLevel;
+  logger?: PaymentLogger;
+  providerName?: string;
+  errorVerbosity?: ErrorVerbosity;
+}
+```
+
+See [Configuration](/sdk/configuration) for details on each option.
+
+## Return Value
+
+Returns the **same server instance** with payment logic injected. The server's type is preserved for TypeScript compatibility.
+
+```typescript
+const paidServer = withPayments(server, config);
+// paidServer === server (same reference, modified)
+```
+
+## Basic Usage
+
+```typescript
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { withPayments } from '@payo/mcp';
+
+const server = new McpServer({
+  name: 'weather-api',
+  version: '1.0.0'
+});
+
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: {
+    'get_weather': 0.01,
+    'get_forecast': 0.05,
+  }
+});
+
+// Register tools on the wrapped server
+paidServer.tool('get_weather', {
+  description: 'Get current weather',
+  inputSchema: {
+    type: 'object',
+    properties: { city: { type: 'string' } },
+    required: ['city']
+  }
+}, async ({ city }) => {
+  return { temperature: 72, city };
+});
+
+// Connect as normal
+paidServer.connect(transport);
+```
+
+## How It Works
+
+`withPayments()` modifies your server by:
+
+1. **Creating a Proxy** - Intercepts the `.server` property
+2. **Wrapping setRequestHandler** - Catches tool handler registration
+3. **Injecting Payment Logic** - Wraps `tools/call` and `tools/list` handlers
+
+When a tool is called:
+
+```
+1. Agent calls tools/call with name="get_weather"
+2. Wrapped handler looks up price: pricing["get_weather"] = 0.01
+3. If price > 0:
+   a. Extract agent token from request
+   b. Call POST /api/v1/charge
+   c. If charge succeeds → run your handler
+   d. If charge fails → return error
+4. If price = 0: run your handler directly
+```
+
+## Pricing Configuration
+
+The `pricing` object maps tool names to USD prices:
+
+```typescript
+type PricingConfig = Record<string, number>;
+```
+
+```typescript
+pricing: {
+  'expensive_tool': 1.00,    // $1.00 per call
+  'standard_tool': 0.05,     // $0.05 per call
+  'cheap_tool': 0.01,        // $0.01 per call
+  'free_tool': 0,            // Free (no charge)
+}
+```
+
+<Note>
+Tools not in the `pricing` object are treated as free by default.
+</Note>
+
+## Validations
+
+`withPayments()` validates your configuration at startup:
+
+| Validation | Error |
+|------------|-------|
+| Missing `apiKey` | `"apiKey is required"` |
+| Empty `apiKey` | `"apiKey is required"` |
+| Invalid `pricing` values | `"Price must be a non-negative number"` |
+
+## Error Handling
+
+If initialization fails, `withPayments()` throws synchronously:
+
+```typescript
+try {
+  const paidServer = withPayments(server, {
+    apiKey: '',  // Invalid
+    pricing: {}
+  });
+} catch (error) {
+  console.error('SDK init failed:', error.message);
+}
+```
+
+Runtime payment errors (during tool calls) are handled by the wrapper and returned to agents as tool errors.
+
+## Multiple Servers
+
+You can wrap multiple servers independently:
+
+```typescript
+const weatherServer = withPayments(new McpServer({ name: 'weather' }), {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: { 'get_weather': 0.01 }
+});
+
+const dataServer = withPayments(new McpServer({ name: 'data' }), {
+  apiKey: process.env.PAYO_API_KEY!,  // Same or different key
+  pricing: { 'query_data': 0.10 }
+});
+```
+
+## Chaining with Other Wrappers
+
+If you have other wrappers/middleware, apply `withPayments()` **last** so payment happens first:
+
+```typescript
+let server = new McpServer({ name: 'api', version: '1.0.0' });
+server = withLogging(server);      // Your logging wrapper
+server = withPayments(server, {    // Payment wrapper (outermost)
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: { 'my_tool': 0.01 }
+});
+```
+
+## TypeScript
+
+Full type inference is preserved:
+
+```typescript
+const server = new McpServer({ name: 'api', version: '1.0.0' });
+const paidServer = withPayments(server, config);
+
+// TypeScript knows paidServer has all McpServer methods
+paidServer.tool('test', schema, handler);  // ✓ typed
+paidServer.connect(transport);              // ✓ typed
+```

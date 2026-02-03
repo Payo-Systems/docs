@@ -1,0 +1,203 @@
+---
+title: "Quickstart: Providers"
+description: "Monetize your MCP tools in 10 minutes"
+---
+
+<Info>
+**Prerequisites**: An existing MCP server built with `@modelcontextprotocol/sdk`
+</Info>
+
+## 1. Create an Account
+
+<Steps>
+  <Step title="Go to payo.dev">
+    Visit [payo.dev](https://payo.dev) and click **Get Started**.
+  </Step>
+  <Step title="Sign in with Google">
+    Authenticate using your Google account.
+  </Step>
+  <Step title="Select your role">
+    Choose **Provider** to access the provider dashboard.
+  </Step>
+</Steps>
+
+## 2. Create an API Key
+
+On your first visit, you'll be prompted to create your first API key.
+
+<Steps>
+  <Step title="Name your key">
+    Give it a name like "Production Server".
+  </Step>
+  <Step title="Copy the key">
+    Copy the key immediately. It starts with `sk_live_` and **won't be shown again**.
+  </Step>
+</Steps>
+
+<Warning>
+This key authenticates charge requests. Keep it secret and never expose it in client-side code.
+</Warning>
+
+## 3. Install the SDK
+
+```bash
+npm install @payo/mcp
+```
+
+## 4. Wrap Your Server
+
+Import `withPayments` and wrap your MCP server:
+
+```typescript server.ts
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { withPayments } from '@payo/mcp';
+
+// Create your MCP server as usual
+const server = new McpServer({
+  name: 'weather-api',
+  version: '1.0.0'
+});
+
+// Wrap with payments
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY,
+  pricing: {
+    'get_weather': 0.01,      // $0.01 per call
+    'get_forecast': 0.05,     // $0.05 per call
+    'get_location': 0,        // Free
+  }
+});
+
+// Register tools as normal
+paidServer.tool('get_weather', {
+  description: 'Get current weather for a city',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      city: { type: 'string' }
+    },
+    required: ['city']
+  }
+}, async ({ city }) => {
+  // Your tool implementation
+  return { temperature: 72, conditions: 'sunny' };
+});
+
+// Start the server
+paidServer.connect(transport);
+```
+
+## 5. Set Environment Variable
+
+Store your API key as an environment variable:
+
+```bash
+export PAYO_API_KEY=sk_live_your_provider_key_here
+```
+
+For production, use your hosting provider's secrets management (Vercel, Railway, etc.).
+
+## 6. Deploy
+
+Deploy your server as you normally would. The SDK handles payment automatically:
+
+1. **Free tools** (price: 0) execute immediately
+2. **Paid tools** charge the agent first, then execute
+3. **No token?** Returns a helpful error message
+
+## How Charging Works
+
+When an agent calls `get_weather`:
+
+1. Agent sends a tool call request with their token
+2. SDK intercepts and sees the price is \$0.01
+3. SDK calls Payo to charge the agent
+4. Payo validates and transfers \$0.01 from agent to provider
+5. SDK executes your tool handler
+6. Result returned to agent
+
+## Example: Complete Server
+
+Here's a full example with multiple tools:
+
+```typescript weather-server.ts
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { withPayments } from '@payo/mcp';
+
+const server = new McpServer({
+  name: 'weather-api',
+  version: '1.0.0'
+});
+
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: {
+    'get_weather': 0.01,
+    'get_forecast': 0.05,
+    'get_alerts': 0.02,
+    'list_cities': 0,  // Free discovery tool
+  },
+  providerName: 'WeatherAPI',  // Shown in error messages
+  errorVerbosity: 'detailed',  // Helpful errors for agents
+});
+
+// Free tool - no payment required
+paidServer.tool('list_cities', {
+  description: 'List supported cities (free)',
+}, async () => {
+  return ['New York', 'Los Angeles', 'Chicago', 'Houston'];
+});
+
+// Paid tools
+paidServer.tool('get_weather', {
+  description: 'Get current weather ($0.01)',
+  inputSchema: {
+    type: 'object',
+    properties: { city: { type: 'string' } },
+    required: ['city']
+  }
+}, async ({ city }) => {
+  return { city, temp: 72, conditions: 'sunny' };
+});
+
+paidServer.tool('get_forecast', {
+  description: 'Get 7-day forecast ($0.05)',
+  inputSchema: {
+    type: 'object',
+    properties: { city: { type: 'string' } },
+    required: ['city']
+  }
+}, async ({ city }) => {
+  return { city, forecast: ['sunny', 'cloudy', 'rain', 'sunny', 'sunny', 'cloudy', 'sunny'] };
+});
+
+// Connect via stdio
+const transport = new StdioServerTransport();
+paidServer.connect(transport);
+```
+
+## Monitoring Earnings
+
+View your earnings in the **Wallet** page:
+
+- Total earnings
+- Transaction history (tool, amount, agent, timestamp)
+- Withdrawal options (coming soon)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="SDK Configuration" icon="gear" href="/sdk/configuration">
+    All configuration options
+  </Card>
+  <Card title="Setting Prices" icon="dollar-sign" href="/guides/provider/pricing">
+    How to set and update prices
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/provider/error-handling">
+    Customize error messages
+  </Card>
+  <Card title="SDK Reference" icon="book" href="/sdk/with-payments">
+    Full API documentation
+  </Card>
+</CardGroup>

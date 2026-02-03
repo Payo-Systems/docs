@@ -1,0 +1,190 @@
+---
+title: "Error Handling"
+description: "Customize error messages for better agent experience"
+---
+
+## Overview
+
+When a charge fails, the SDK returns an error to the agent instead of executing the tool. You can customize these messages to help agents resolve issues.
+
+## Error Types
+
+| Error Code | When It Happens |
+|------------|-----------------|
+| `TOKEN_MISSING` | No agent token provided |
+| `TOKEN_INVALID` | Token is invalid or deleted |
+| `INSUFFICIENT_BALANCE` | Agent doesn't have enough credits |
+| `PLATFORM_UNAVAILABLE` | Payo platform is down |
+| `CHARGE_FAILED` | Other charge failures |
+
+## Error Verbosity
+
+Control how detailed error messages are:
+
+```typescript
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: { 'my_tool': 0.01 },
+  errorVerbosity: 'detailed',  // or 'concise'
+});
+```
+
+### Detailed Errors (default)
+
+```
+Payment required. WeatherAPI has enabled Payo micropayments for 'get_weather' ($0.01).
+
+To use this tool:
+1. Get your agent token at https://payo.dev/tokens
+2. Add the token to your MCP client's Authorization header
+3. Documentation: https://docs.payo.dev/getting-started
+
+Questions? Contact cheng@payo.dev
+```
+
+### Concise Errors
+
+```
+Payment required for 'get_weather' ($0.01). Get your token at https://payo.dev/tokens
+```
+
+## Provider Name
+
+Set `providerName` to identify your service in error messages:
+
+```typescript
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: { 'get_weather': 0.01 },
+  providerName: 'WeatherAPI',  // Shown in errors
+});
+```
+
+Error message:
+```
+Payment required. WeatherAPI has enabled Payo micropayments...
+                  ^^^^^^^^^^
+```
+
+Without `providerName`, errors say "The provider has enabled...".
+
+## Fail Open vs Fail Closed
+
+What happens when Payo is unavailable?
+
+### Fail Closed (default)
+
+```typescript
+failOpen: false  // default
+```
+
+If Payo is down, tools return `PLATFORM_UNAVAILABLE`. Agents can't use paid tools, but you don't give away free calls.
+
+### Fail Open
+
+```typescript
+failOpen: true
+```
+
+If Payo is down, tools execute without charging. Agents can still use your tools, but you lose revenue during outages.
+
+<Warning>
+`failOpen: true` means you provide free service during Payo outages. Only use this if availability is more important than revenue.
+</Warning>
+
+## Catching Errors in Your Tools
+
+The SDK handles payment errors before your tool runs. But if your tool itself throws an error, it passes through normally:
+
+```typescript
+paidServer.tool('my_tool', schema, async (args) => {
+  // Payment already succeeded if we get here
+
+  try {
+    const result = await doSomething(args);
+    return result;
+  } catch (error) {
+    // Your error, not a payment error
+    throw new Error('Tool failed: ' + error.message);
+  }
+});
+```
+
+## Custom Error Handling
+
+For advanced use cases, catch `PaymentError` in your server:
+
+```typescript
+import { PaymentError, PaymentErrorCode } from '@payo/mcp';
+
+// The SDK throws PaymentError for payment failures
+// These are returned to the agent, not your tool
+
+// You can use PaymentError for type checking:
+if (error instanceof PaymentError) {
+  console.log('Payment failed:', error.code, error.message);
+}
+```
+
+## Logging Errors
+
+Enable debug logging to see error details:
+
+```typescript
+import { LogLevel } from '@payo/mcp';
+
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: { 'my_tool': 0.01 },
+  logLevel: LogLevel.DEBUG,  // See all SDK activity
+});
+```
+
+Log levels:
+- `DEBUG` - Everything
+- `INFO` - Charges and important events
+- `WARN` - Warnings (missing tokens with `failOpen`)
+- `ERROR` - Errors only
+- `NONE` - Silent
+
+## Example: Complete Configuration
+
+```typescript
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: {
+    'premium_tool': 0.10,
+    'basic_tool': 0.01,
+    'free_tool': 0,
+  },
+
+  // Error configuration
+  providerName: 'MyAPI',
+  errorVerbosity: 'detailed',
+
+  // Availability
+  failOpen: false,
+
+  // Debugging
+  logLevel: LogLevel.INFO,
+});
+```
+
+## Agent Experience
+
+Design your error handling with agents in mind:
+
+<AccordionGroup>
+  <Accordion title="Clear next steps">
+    Errors should tell agents exactly what to do: "Get a token at...", "Deposit funds at...".
+  </Accordion>
+  <Accordion title="Include pricing">
+    Always mention the tool's price so agents know the cost.
+  </Accordion>
+  <Accordion title="Support contact">
+    Include how to get help for persistent issues.
+  </Accordion>
+  <Accordion title="Don't leak internals">
+    Error messages shouldn't expose your implementation details or API key status.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,262 @@
+---
+title: "Authentication"
+description: "Understanding API keys and tokens in Payo"
+---
+
+## Overview
+
+Payo uses two types of credentials:
+
+| Credential | Used By | Purpose |
+|------------|---------|---------|
+| **Provider API Key** | MCP Providers | Authenticate charge requests |
+| **Agent Token** | AI Agents | Identify who's being charged |
+
+Both are secret keys that should never be shared publicly.
+
+## Provider API Keys
+
+### What They Are
+
+Provider keys authenticate your MCP server to the Payo platform. When your server charges an agent, the provider key proves it's really you.
+
+### Format
+
+```
+sk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...
+```
+
+- `sk_` - Secret key prefix
+- `live_` - Production environment
+- 64 hex characters - Unique identifier
+
+### Scope
+
+Provider keys have `provider:charge` scope, which allows:
+- Charging agents via `/api/v1/charge`
+- No other actions (can't manage agents, can't access admin features)
+
+### Usage
+
+Pass as environment variable to your MCP server:
+
+```bash
+PAYO_API_KEY=sk_live_xxx node server.js
+```
+
+Used in SDK configuration:
+
+```typescript
+withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: { ... }
+});
+```
+
+### Security
+
+<Warning>
+Your provider key is a secret. Exposure allows anyone to charge agents on your behalf.
+</Warning>
+
+Best practices:
+- Store in environment variables, never in code
+- Use secrets management (Vercel, Railway, AWS Secrets Manager)
+- Rotate periodically
+- Different keys for development vs production
+
+---
+
+## Agent Tokens
+
+### What They Are
+
+Agent tokens identify which agent is making a tool call. When an agent calls a paid tool, their token is used to charge their account.
+
+### Format
+
+Same as provider keys:
+
+```
+sk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...
+```
+
+### Scope
+
+Agent tokens have `agent:connect` scope, which allows:
+- Being charged for tool calls
+- No other actions (can't charge others, can't access platform features)
+
+### Usage
+
+**stdio transport** (Claude Desktop, Cursor):
+
+```json
+{
+  "mcpServers": {
+    "my-server": {
+      "command": "node",
+      "args": ["server.js"],
+      "env": {
+        "AGENT_TOKEN": "sk_live_agent_xxx"
+      }
+    }
+  }
+}
+```
+
+**HTTP transport** (custom agents):
+
+```typescript
+const response = await fetch(url, {
+  headers: {
+    'Authorization': 'Bearer sk_live_agent_xxx'
+  }
+});
+```
+
+### Security
+
+Agent tokens control spending. Exposure allows anyone to spend your credits.
+
+Best practices:
+- Store securely (not in version control)
+- Use different tokens for different agents/environments
+- Monitor for unexpected charges
+- Rotate if compromised
+
+---
+
+## Key Storage
+
+Keys are stored securely:
+
+```
+Raw Key:        sk_live_abc123xyz789...
+                    ↓
+SHA256 Hash:    5d41402abc4b2a76b9719d911017c592...
+                    ↓
+Stored in DB:   key_hash = "5d41402abc..."
+                key_prefix = "sk_live_"
+                key_last4 = "9..."
+```
+
+The raw key is:
+- Shown once at creation
+- Never stored
+- Cannot be retrieved
+
+Only the hash is stored for validation.
+
+---
+
+## Key Validation
+
+When a key is used:
+
+```
+1. Receive: sk_live_abc123xyz789...
+
+2. Compute: SHA256("sk_live_abc123xyz789...") = "5d41402..."
+
+3. Query:   SELECT * FROM api_keys
+            WHERE key_hash = "5d41402..."
+            AND deleted_at IS NULL
+
+4. Check:   scopes @> '{required_scope}'
+
+5. Return:  { workspace_id, key_name } or error
+```
+
+This allows validation without ever storing the raw key.
+
+---
+
+## Scopes
+
+Each key type has a specific scope:
+
+| Key Type | Scope | Permissions |
+|----------|-------|-------------|
+| Provider | `provider:charge` | Call `/api/v1/charge` |
+| Agent | `agent:connect` | Be charged for tool calls |
+
+Keys cannot perform actions outside their scope:
+- An agent token cannot charge other agents
+- A provider key cannot be charged
+
+---
+
+## Key Lifecycle
+
+### Creation
+
+1. User clicks "Create Key" in dashboard
+2. System generates 64 random hex bytes
+3. Key is hashed and stored
+4. Raw key is displayed once
+
+### Usage
+
+1. Key is passed to API or MCP server
+2. System hashes and looks up
+3. Validates scope and status
+4. Authorizes the action
+
+### Rotation
+
+1. Create a new key
+2. Update your configuration
+3. Delete the old key
+
+### Deletion
+
+1. User clicks "Delete" in dashboard
+2. Key is soft-deleted (`deleted_at` set)
+3. Key immediately stops working
+4. Key cannot be recovered
+
+---
+
+## Multiple Keys
+
+You can create multiple keys for different purposes:
+
+**Agents:**
+- Separate keys per agent instance
+- Separate keys per environment
+- Easy to revoke one without affecting others
+
+**Providers:**
+- Separate keys per MCP server
+- Separate keys per environment
+- Independent rotation schedules
+
+---
+
+## Common Issues
+
+### "Invalid provider key"
+
+- Key was deleted
+- Key doesn't exist
+- Key is from wrong account
+- Key was typed incorrectly
+
+**Fix**: Create a new key in dashboard.
+
+### "Invalid agent token"
+
+- Token was deleted
+- Token doesn't exist
+- Token was typed incorrectly
+
+**Fix**: Agent must create new token.
+
+### "Token missing"
+
+- `AGENT_TOKEN` env var not set
+- `Authorization` header not sent
+- Configuration syntax error
+
+**Fix**: Check agent configuration.

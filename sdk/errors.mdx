@@ -1,0 +1,252 @@
+---
+title: "Error Handling"
+description: "Payment error types and codes"
+---
+
+## PaymentError
+
+All payment-related errors are instances of `PaymentError`:
+
+```typescript
+class PaymentError extends Error {
+  code: PaymentErrorCode;
+  details?: Record<string, unknown>;
+}
+```
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `message` | `string` | Human-readable error message |
+| `code` | `PaymentErrorCode` | Machine-readable error code |
+| `details` | `object` | Additional context (optional) |
+
+### Usage
+
+```typescript
+import { PaymentError, PaymentErrorCode } from '@payo/mcp';
+
+try {
+  // Tool call that might fail
+} catch (error) {
+  if (error instanceof PaymentError) {
+    switch (error.code) {
+      case PaymentErrorCode.INSUFFICIENT_BALANCE:
+        console.log('Agent needs more credits');
+        break;
+      case PaymentErrorCode.TOKEN_INVALID:
+        console.log('Agent token is invalid');
+        break;
+    }
+  }
+}
+```
+
+---
+
+## Error Codes
+
+```typescript
+enum PaymentErrorCode {
+  TOKEN_MISSING = 'TOKEN_MISSING',
+  TOKEN_INVALID = 'TOKEN_INVALID',
+  INSUFFICIENT_BALANCE = 'INSUFFICIENT_BALANCE',
+  PLATFORM_UNAVAILABLE = 'PLATFORM_UNAVAILABLE',
+  CHARGE_FAILED = 'CHARGE_FAILED',
+}
+```
+
+### TOKEN_MISSING
+
+**Meaning**: The agent didn't provide a token.
+
+**When**: Agent calls a paid tool without `Authorization` header or `AGENT_TOKEN` env var.
+
+**User Message** (detailed):
+```
+Payment required. [Provider] has enabled Payo micropayments for '[tool]' ($X.XX).
+
+To use this tool:
+1. Get your agent token at https://payo.dev/tokens
+2. Add the token to your MCP client's Authorization header
+3. Documentation: https://docs.payo.dev/getting-started
+
+Questions? Contact cheng@payo.dev
+```
+
+**Resolution**: Agent must configure their token.
+
+---
+
+### TOKEN_INVALID
+
+**Meaning**: The token exists but is invalid.
+
+**When**:
+- Token was deleted from dashboard
+- Token is malformed
+- Token doesn't exist
+
+**User Message**:
+```
+Invalid or expired agent token. Get a new one at https://payo.dev/tokens
+```
+
+**Resolution**: Agent must create a new token.
+
+---
+
+### INSUFFICIENT_BALANCE
+
+**Meaning**: Agent doesn't have enough credits.
+
+**When**: Agent's `credits_balance` is less than the tool's price.
+
+**User Message** (detailed):
+```
+Insufficient balance for '[tool]' (requires $X.XX, current balance: $Y.YY).
+
+To add funds:
+1. Visit https://payo.dev/billing
+2. Top up your account balance
+
+Documentation: https://docs.payo.dev/billing
+```
+
+**Details**:
+```typescript
+{
+  required: 0.05,      // Price of the tool
+  available: 0.02,     // Agent's current balance
+  tool: 'get_weather'
+}
+```
+
+**Resolution**: Agent must deposit more funds.
+
+---
+
+### PLATFORM_UNAVAILABLE
+
+**Meaning**: Payo platform couldn't be reached.
+
+**When**:
+- Network error
+- Payo is down
+- Request timeout
+
+**User Message**:
+```
+Payment service temporarily unavailable. Please try again shortly.
+Status: https://status.payo.dev
+```
+
+**Behavior**:
+- With `failOpen: false` (default): Tool fails
+- With `failOpen: true`: Tool executes without charging
+
+**Resolution**: Retry later or wait for Payo status update.
+
+---
+
+### CHARGE_FAILED
+
+**Meaning**: Charge was rejected for another reason.
+
+**When**:
+- Provider API key is invalid
+- Server-side validation error
+- Unexpected platform error
+
+**User Message**:
+```
+Payment processing failed. Please try again or contact support.
+```
+
+**Resolution**: Provider should check their API key. If persistent, contact Payo support.
+
+---
+
+## Error Flow
+
+```
+Agent calls paid tool
+         │
+         ▼
+   Extract token ─────────────────────┐
+         │                            │
+         │ No token                   │
+         ▼                            │
+   TOKEN_MISSING ◄────────────────────┘
+         │
+         │ Has token
+         ▼
+   Call /api/v1/charge
+         │
+    ┌────┴────┬─────────┬──────────────┐
+    │         │         │              │
+    ▼         ▼         ▼              ▼
+ Success   Invalid   Balance      Network
+           Token     Too Low      Error
+    │         │         │              │
+    │         ▼         ▼              ▼
+    │   TOKEN_INVALID  INSUFFICIENT  PLATFORM_
+    │                  _BALANCE      UNAVAILABLE
+    │
+    ▼
+Execute tool
+    │
+    ▼
+Return result
+```
+
+---
+
+## Handling Errors in Agents
+
+Agents receive errors as tool call failures. The error message tells them what to do:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32603,
+    "message": "Payment required for 'get_weather' ($0.01). Get your token at https://payo.dev/tokens"
+  }
+}
+```
+
+Well-behaved agents should:
+1. Parse the error message
+2. Show it to the user or log it
+3. Not retry immediately (except for `PLATFORM_UNAVAILABLE`)
+
+---
+
+## Logging Errors
+
+Enable logging to see error details:
+
+```typescript
+import { LogLevel } from '@payo/mcp';
+
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: { 'my_tool': 0.01 },
+  logLevel: LogLevel.DEBUG,
+});
+```
+
+Example log output:
+```
+[2024-01-15T10:30:45Z] [payo:info] Charge failed {
+  "code": "INSUFFICIENT_BALANCE",
+  "tool": "get_weather",
+  "agentToken": "sk_l****xyz9",
+  "required": 0.01
+}
+```
+
+Note: Tokens are automatically masked in logs.

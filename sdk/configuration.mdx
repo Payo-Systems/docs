@@ -1,0 +1,304 @@
+---
+title: "Configuration"
+description: "All SDK configuration options"
+---
+
+## PaymentConfig
+
+The full configuration interface:
+
+```typescript
+interface PaymentConfig {
+  // Required
+  apiKey: string;
+  pricing: PricingConfig;
+
+  // Optional - Platform
+  platformUrl?: string;
+
+  // Optional - Behavior
+  failOpen?: boolean;
+  requireAuthForAllTools?: boolean;
+
+  // Optional - Logging
+  logLevel?: LogLevel;
+  logger?: PaymentLogger;
+
+  // Optional - Error Messages
+  providerName?: string;
+  errorVerbosity?: ErrorVerbosity;
+}
+```
+
+---
+
+## Required Options
+
+### apiKey
+
+**Type**: `string`
+**Required**: Yes
+
+Your Payo provider API key. Get this from your [Payo dashboard](https://payo.dev).
+
+```typescript
+{
+  apiKey: process.env.PAYO_API_KEY!,
+}
+```
+
+<Warning>
+Never hardcode your API key. Use environment variables.
+</Warning>
+
+### pricing
+
+**Type**: `Record<string, number>`
+**Required**: Yes
+
+Maps tool names to USD prices:
+
+```typescript
+{
+  pricing: {
+    'get_weather': 0.01,      // $0.01
+    'analyze_data': 0.05,     // $0.05
+    'generate_report': 0.10,  // $0.10
+    'free_tool': 0,           // Free
+  }
+}
+```
+
+Tools not in this object default to free (price = 0).
+
+---
+
+## Platform Options
+
+### platformUrl
+
+**Type**: `string`
+**Default**: `"https://payo.dev"`
+
+The Payo platform URL. Only change this for testing.
+
+```typescript
+{
+  platformUrl: 'https://staging.payo.dev',  // Staging
+}
+```
+
+---
+
+## Behavior Options
+
+### failOpen
+
+**Type**: `boolean`
+**Default**: `false`
+
+What happens when Payo is unreachable:
+
+| Value | Behavior |
+|-------|----------|
+| `false` | Tools fail with `PLATFORM_UNAVAILABLE` error |
+| `true` | Tools execute without charging |
+
+```typescript
+{
+  failOpen: true,  // Continue working during outages
+}
+```
+
+<Warning>
+`failOpen: true` means free service during Payo outages. Use only if availability > revenue.
+</Warning>
+
+### requireAuthForAllTools
+
+**Type**: `boolean`
+**Default**: `false`
+
+Whether free tools also require an agent token:
+
+| Value | Behavior |
+|-------|----------|
+| `false` | Free tools work without a token |
+| `true` | All tools require a token (even free ones) |
+
+```typescript
+{
+  requireAuthForAllTools: true,  // Track all tool usage
+}
+```
+
+Use this to track usage of free tools or enforce authentication.
+
+---
+
+## Logging Options
+
+### logLevel
+
+**Type**: `LogLevel`
+**Default**: `LogLevel.INFO`
+
+Controls logging verbosity:
+
+```typescript
+import { LogLevel } from '@payo/mcp';
+
+{
+  logLevel: LogLevel.DEBUG,  // Most verbose
+}
+```
+
+| Level | Value | Description |
+|-------|-------|-------------|
+| `DEBUG` | 0 | Everything: requests, responses, timing |
+| `INFO` | 1 | Charges, connections, important events |
+| `WARN` | 2 | Warnings: missing tokens, failOpen triggers |
+| `ERROR` | 3 | Errors only |
+| `NONE` | 4 | Silent |
+
+### logger
+
+**Type**: `PaymentLogger`
+**Default**: Built-in stderr logger
+
+Custom logger implementation:
+
+```typescript
+interface PaymentLogger {
+  debug(message: string, meta?: Record<string, unknown>): void;
+  info(message: string, meta?: Record<string, unknown>): void;
+  warn(message: string, meta?: Record<string, unknown>): void;
+  error(message: string, meta?: Record<string, unknown>): void;
+}
+```
+
+Example with Winston:
+
+```typescript
+import winston from 'winston';
+
+const winstonLogger = winston.createLogger({ /* config */ });
+
+{
+  logger: {
+    debug: (msg, meta) => winstonLogger.debug(msg, meta),
+    info: (msg, meta) => winstonLogger.info(msg, meta),
+    warn: (msg, meta) => winstonLogger.warn(msg, meta),
+    error: (msg, meta) => winstonLogger.error(msg, meta),
+  }
+}
+```
+
+---
+
+## Error Message Options
+
+### providerName
+
+**Type**: `string`
+**Default**: `undefined`
+
+Your service name, shown in error messages:
+
+```typescript
+{
+  providerName: 'WeatherAPI',
+}
+```
+
+Error message:
+```
+Payment required. WeatherAPI has enabled Payo micropayments...
+```
+
+Without `providerName`:
+```
+Payment required. The provider has enabled Payo micropayments...
+```
+
+### errorVerbosity
+
+**Type**: `'detailed' | 'concise'`
+**Default**: `'detailed'`
+
+How much detail in error messages:
+
+```typescript
+{
+  errorVerbosity: 'concise',
+}
+```
+
+**Detailed** (default):
+```
+Payment required. WeatherAPI has enabled Payo micropayments for 'get_weather' ($0.01).
+
+To use this tool:
+1. Get your agent token at https://payo.dev/tokens
+2. Add the token to your MCP client's Authorization header
+3. Documentation: https://docs.payo.dev/getting-started
+
+Questions? Contact cheng@payo.dev
+```
+
+**Concise**:
+```
+Payment required for 'get_weather' ($0.01). Get your token at https://payo.dev/tokens
+```
+
+---
+
+## Complete Example
+
+```typescript
+import { withPayments, LogLevel } from '@payo/mcp';
+
+const paidServer = withPayments(server, {
+  // Required
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: {
+    'premium_analysis': 0.25,
+    'basic_query': 0.01,
+    'list_options': 0,
+  },
+
+  // Platform
+  platformUrl: 'https://payo.dev',
+
+  // Behavior
+  failOpen: false,
+  requireAuthForAllTools: false,
+
+  // Logging
+  logLevel: LogLevel.INFO,
+
+  // Error messages
+  providerName: 'DataAPI',
+  errorVerbosity: 'detailed',
+});
+```
+
+---
+
+## Environment-Based Configuration
+
+```typescript
+const isDev = process.env.NODE_ENV === 'development';
+
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: { 'my_tool': 0.01 },
+
+  // Dev-friendly settings
+  logLevel: isDev ? LogLevel.DEBUG : LogLevel.WARN,
+  failOpen: isDev,  // Don't block dev if Payo is down
+  platformUrl: isDev
+    ? 'https://staging.payo.dev'
+    : 'https://payo.dev',
+});
+```

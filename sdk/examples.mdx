@@ -1,0 +1,373 @@
+---
+title: "Examples"
+description: "Complete code examples for common scenarios"
+---
+
+## Basic MCP Server
+
+A minimal paid MCP server:
+
+```typescript basic-server.ts
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { withPayments } from '@payo/mcp';
+
+const server = new McpServer({
+  name: 'basic-api',
+  version: '1.0.0'
+});
+
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: {
+    'hello': 0.01,
+  }
+});
+
+paidServer.tool('hello', {
+  description: 'Say hello ($0.01)',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' }
+    },
+    required: ['name']
+  }
+}, async ({ name }) => {
+  return { message: `Hello, ${name}!` };
+});
+
+const transport = new StdioServerTransport();
+paidServer.connect(transport);
+```
+
+Run it:
+```bash
+PAYO_API_KEY=sk_live_xxx node basic-server.js
+```
+
+---
+
+## Mixed Free and Paid Tools
+
+Offer some tools for free to attract users:
+
+```typescript mixed-pricing.ts
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { withPayments } from '@payo/mcp';
+
+const server = new McpServer({
+  name: 'data-api',
+  version: '1.0.0'
+});
+
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: {
+    // Free discovery tools
+    'list_datasets': 0,
+    'get_schema': 0,
+
+    // Paid data access
+    'query_data': 0.05,
+    'export_csv': 0.10,
+    'run_analysis': 0.25,
+  },
+  providerName: 'DataAPI',
+});
+
+// Free: Let users explore
+paidServer.tool('list_datasets', {
+  description: 'List available datasets (free)',
+}, async () => {
+  return ['sales', 'customers', 'products', 'orders'];
+});
+
+paidServer.tool('get_schema', {
+  description: 'Get dataset schema (free)',
+  inputSchema: {
+    type: 'object',
+    properties: { dataset: { type: 'string' } },
+    required: ['dataset']
+  }
+}, async ({ dataset }) => {
+  const schemas = {
+    sales: { columns: ['date', 'amount', 'product_id'] },
+    customers: { columns: ['id', 'name', 'email'] },
+  };
+  return schemas[dataset] || { error: 'Dataset not found' };
+});
+
+// Paid: Actual data access
+paidServer.tool('query_data', {
+  description: 'Query a dataset ($0.05)',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      dataset: { type: 'string' },
+      limit: { type: 'number' }
+    },
+    required: ['dataset']
+  }
+}, async ({ dataset, limit = 10 }) => {
+  // Your data query logic
+  return { rows: [], count: 0 };
+});
+
+const transport = new StdioServerTransport();
+paidServer.connect(transport);
+```
+
+---
+
+## HTTP Transport Server
+
+For web-deployed MCP servers:
+
+```typescript http-server.ts
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { withPayments } from '@payo/mcp';
+import express from 'express';
+
+const app = express();
+app.use(express.json());
+
+const server = new McpServer({
+  name: 'http-api',
+  version: '1.0.0'
+});
+
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: {
+    'analyze': 0.05,
+  }
+});
+
+paidServer.tool('analyze', {
+  description: 'Analyze text ($0.05)',
+  inputSchema: {
+    type: 'object',
+    properties: { text: { type: 'string' } },
+    required: ['text']
+  }
+}, async ({ text }) => {
+  return {
+    wordCount: text.split(/\s+/).length,
+    charCount: text.length,
+  };
+});
+
+// Create transport for each request
+app.post('/mcp', async (req, res) => {
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => crypto.randomUUID(),
+  });
+
+  // Pass request headers to transport (includes Authorization)
+  await paidServer.connect(transport);
+  await transport.handleRequest(req, res, req.body);
+});
+
+app.listen(3000, () => {
+  console.log('MCP server running on http://localhost:3000/mcp');
+});
+```
+
+Agents connect with:
+```typescript
+const response = await fetch('http://localhost:3000/mcp', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer sk_live_agent_token'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'tools/call',
+    params: { name: 'analyze', arguments: { text: 'Hello world' } },
+    id: 1
+  })
+});
+```
+
+---
+
+## Custom Error Messages
+
+Customize how errors appear to agents:
+
+```typescript custom-errors.ts
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { withPayments } from '@payo/mcp';
+
+const server = new McpServer({
+  name: 'premium-api',
+  version: '1.0.0'
+});
+
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: {
+    'premium_feature': 1.00,
+  },
+
+  // Custom branding
+  providerName: 'Premium Data Co',
+
+  // Concise errors (less verbose)
+  errorVerbosity: 'concise',
+});
+
+// Error will say:
+// "Payment required for 'premium_feature' ($1.00). Get your token at https://payo.dev/tokens"
+// Instead of the multi-line detailed version
+```
+
+---
+
+## Debug Logging
+
+Enable verbose logging for development:
+
+```typescript debug-logging.ts
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { withPayments, LogLevel } from '@payo/mcp';
+
+const server = new McpServer({
+  name: 'debug-api',
+  version: '1.0.0'
+});
+
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: {
+    'my_tool': 0.01,
+  },
+
+  // Enable debug logging
+  logLevel: LogLevel.DEBUG,
+});
+
+// Logs will show:
+// [payo:debug] Initializing payment wrapper
+// [payo:debug] Registered pricing for 1 tools
+// [payo:debug] Tool call: my_tool
+// [payo:debug] Extracting agent token
+// [payo:debug] Token found: sk_l****xyz9
+// [payo:debug] Charging $0.01 for my_tool
+// [payo:debug] Charge successful: txn_abc123
+// [payo:info] Charged $0.01 for my_tool
+```
+
+---
+
+## Custom Logger
+
+Integrate with your logging system:
+
+```typescript custom-logger.ts
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { withPayments, LogLevel } from '@payo/mcp';
+import pino from 'pino';
+
+const pinoLogger = pino({ level: 'debug' });
+
+const server = new McpServer({
+  name: 'logged-api',
+  version: '1.0.0'
+});
+
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: { 'my_tool': 0.01 },
+
+  logLevel: LogLevel.DEBUG,
+  logger: {
+    debug: (msg, meta) => pinoLogger.debug(meta, msg),
+    info: (msg, meta) => pinoLogger.info(meta, msg),
+    warn: (msg, meta) => pinoLogger.warn(meta, msg),
+    error: (msg, meta) => pinoLogger.error(meta, msg),
+  },
+});
+```
+
+---
+
+## Fail Open Mode
+
+Keep working during Payo outages:
+
+```typescript fail-open.ts
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { withPayments, LogLevel } from '@payo/mcp';
+
+const server = new McpServer({
+  name: 'resilient-api',
+  version: '1.0.0'
+});
+
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: { 'critical_tool': 0.05 },
+
+  // If Payo is down, run the tool anyway (no charge)
+  failOpen: true,
+
+  // Log warnings when this happens
+  logLevel: LogLevel.WARN,
+});
+
+// If Payo is unreachable:
+// [payo:warn] Platform unavailable, executing tool without charge (failOpen=true)
+```
+
+<Warning>
+Only use `failOpen: true` if availability is critical and you accept free usage during outages.
+</Warning>
+
+---
+
+## TypeScript Types
+
+Using SDK types for type safety:
+
+```typescript typed-server.ts
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import {
+  withPayments,
+  PaymentConfig,
+  PricingConfig,
+  LogLevel,
+} from '@payo/mcp';
+
+// Typed pricing config
+const pricing: PricingConfig = {
+  'tool_a': 0.01,
+  'tool_b': 0.05,
+};
+
+// Typed full config
+const config: PaymentConfig = {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing,
+  logLevel: LogLevel.INFO,
+  providerName: 'TypedAPI',
+  errorVerbosity: 'detailed',
+  failOpen: false,
+};
+
+const server = new McpServer({
+  name: 'typed-api',
+  version: '1.0.0'
+});
+
+const paidServer = withPayments(server, config);
+```

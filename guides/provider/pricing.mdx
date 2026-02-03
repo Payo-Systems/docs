@@ -1,0 +1,51 @@
+---
+title: "Setting Prices"
+description: "How to set and update prices for your MCP tools"
+---
+
+## Overview
+
+You define prices per tool in your SDK configuration. Prices are in USD and can range from \$0 (free) to any amount.
+
+```typescript
+const paidServer = withPayments(server, {
+  apiKey: process.env.PAYO_API_KEY!,
+  pricing: {
+    'simple_tool': 0.01,     // $0.01
+    'complex_tool': 0.10,    // $0.10
+    'premium_tool': 1.00,    // $1.00
+    'free_tool': 0,          // Free
+  }
+});
+```
+
+## Cost-Based Pricing
+
+Price based on your costs to serve the tool:
+
+| Cost Factor | Example |
+|-------------|---------|
+| API calls you make | If an external API costs \$0.001/call, charge \$0.002 |
+| Compute time | Heavy processing → higher price |
+| Data transfer | Large responses → higher price |
+
+A good formula: **your_cost × 1.5-3x = price**
+
+## Price Communication
+
+Help agents understand your pricing by including it in tool descriptions:
+
+```typescript
+paidServer.tool('analyze_document', {
+  description: 'Analyze a document for key insights ($0.10 per call)',
+  // ...
+}, handler);
+```
+
+## Changing Prices
+
+To change prices, update the `pricing` config in your code and redeploy your server. New prices take effect immediately.
+
+<Warning>
+Communicate price changes to your users. Agents may have budgets based on your old prices.
+</Warning>

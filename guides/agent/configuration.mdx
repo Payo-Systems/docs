@@ -1,0 +1,212 @@
+---
+title: "Configuring Your Agent"
+description: "Set up your MCP client to use Payo authentication"
+---
+
+## Overview
+
+Payo-enabled MCP servers need your agent token to process payments. How you pass this token depends on the **transport** your MCP client uses.
+
+## Transport Methods
+
+| Transport | Token Method | Common Clients |
+|-----------|--------------|----------------|
+| **stdio** | Environment variable | Claude Code, Claude Desktop, Cursor |
+| **HTTP** | Authorization header | Custom agents, web apps |
+
+## stdio Transport
+
+Most MCP clients spawn MCP servers as subprocesses. Pass your token as an environment variable.
+
+<Tabs>
+  <Tab title="Claude Code">
+    Use the Claude CLI to add MCP servers with your token.
+
+    **For HTTP servers:**
+
+    ```bash
+    claude mcp add weather-api --transport http https://mcp.example.com/mcp \
+      --header "Authorization: Bearer sk_live_your_token_here"
+    ```
+
+    **For stdio servers:**
+
+    ```bash
+    claude mcp add weather-api -- npx @example/weather-mcp
+    ```
+
+    Then set the environment variable:
+
+    ```bash
+    export AGENT_TOKEN=sk_live_your_token_here
+    ```
+
+    Or add it to your shell profile (`~/.bashrc`, `~/.zshrc`).
+  </Tab>
+  <Tab title="Claude Desktop">
+    Edit your Claude Desktop config:
+
+    **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+    **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+    ```json claude_desktop_config.json
+    {
+      "mcpServers": {
+        "weather-api": {
+          "command": "npx",
+          "args": ["-y", "@example/weather-mcp"],
+          "env": {
+            "AGENT_TOKEN": "sk_live_your_token_here"
+          }
+        }
+      }
+    }
+    ```
+
+    <Note>
+    Restart Claude Desktop after editing the config file.
+    </Note>
+  </Tab>
+  <Tab title="Cursor">
+    Edit your Cursor MCP config:
+
+    **macOS**: `~/.cursor/mcp.json`
+
+    **Windows**: `%USERPROFILE%\.cursor\mcp.json`
+
+    ```json mcp.json
+    {
+      "mcpServers": {
+        "weather-api": {
+          "command": "npx",
+          "args": ["-y", "@example/weather-mcp"],
+          "env": {
+            "AGENT_TOKEN": "sk_live_your_token_here"
+          }
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Command Line">
+    When running MCP servers directly:
+
+    ```bash
+    AGENT_TOKEN=sk_live_your_token_here npx @example/weather-mcp
+    ```
+
+    Or export first:
+
+    ```bash
+    export AGENT_TOKEN=sk_live_your_token_here
+    npx @example/weather-mcp
+    ```
+  </Tab>
+</Tabs>
+
+## HTTP Transport
+
+If your agent connects to MCP servers over HTTP, pass the token in the Authorization header.
+
+```typescript
+const response = await fetch('https://mcp.example.com/mcp', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer sk_live_your_token_here'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'tools/call',
+    params: {
+      name: 'get_weather',
+      arguments: { city: 'New York' }
+    },
+    id: 1
+  })
+});
+```
+
+### Using MCP Client Libraries
+
+If you're using an MCP client library, configure the auth header:
+
+```typescript
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+const transport = new StreamableHTTPClientTransport(
+  new URL('https://mcp.example.com/mcp'),
+  {
+    requestInit: {
+      headers: {
+        'Authorization': 'Bearer sk_live_your_token_here'
+      }
+    }
+  }
+);
+
+const client = new Client({ name: 'my-agent', version: '1.0.0' });
+await client.connect(transport);
+```
+
+## Multiple Servers
+
+You can use the same token for multiple MCP servers:
+
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "command": "npx",
+      "args": ["-y", "@example/weather-mcp"],
+      "env": { "AGENT_TOKEN": "sk_live_abc123" }
+    },
+    "data": {
+      "command": "npx",
+      "args": ["-y", "@example/data-mcp"],
+      "env": { "AGENT_TOKEN": "sk_live_abc123" }
+    }
+  }
+}
+```
+
+All charges go to the same account balance.
+
+## Verifying Your Setup
+
+To verify your token is configured correctly:
+
+1. Call a free tool first (if available) to confirm connectivity
+2. Call a paid tool and check your wallet for the charge
+3. If you see `TOKEN_MISSING`, your token isn't reaching the server
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="TOKEN_MISSING error">
+    The server didn't receive your token. Check:
+    - Environment variable name is exactly `AGENT_TOKEN`
+    - Value includes the full key (starts with `sk_live_`)
+    - Config file syntax is valid JSON
+    - You restarted your MCP client after changes
+  </Accordion>
+  <Accordion title="TOKEN_INVALID error">
+    The token was received but is invalid. Check:
+    - Key wasn't deleted from your dashboard
+    - No typos or missing characters
+    - Key is from the correct Payo account
+  </Accordion>
+  <Accordion title="INSUFFICIENT_BALANCE error">
+    Your token is valid but you need more credits. Check:
+    - Your current balance in the Wallet page
+    - Deposit more funds (or contact cheng@payo.dev during beta)
+  </Accordion>
+  <Accordion title="Connection refused">
+    This isn't a Payo error. Check:
+    - The MCP server URL/command is correct
+    - Server is running and accessible
+    - No firewall blocking the connection
+  </Accordion>
+</AccordionGroup>

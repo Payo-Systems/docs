@@ -1,0 +1,187 @@
+---
+title: "Quickstart: Agents"
+description: "Enable your AI agent to use paid MCP tools in 5 minutes"
+---
+
+<Info>
+**Prerequisites**: An AI agent that uses MCP tools (Claude Code, Claude Desktop, Cursor, or custom agent)
+</Info>
+
+## 1. Create an Account
+
+<Steps>
+  <Step title="Go to payo.dev">
+    Visit [payo.dev](https://payo.dev) and click **Get Started**.
+  </Step>
+  <Step title="Sign in with Google">
+    Authenticate using your Google account.
+  </Step>
+  <Step title="Select your role">
+    Choose **Agent** to access the agent dashboard.
+  </Step>
+</Steps>
+
+## 2. Create an API Key
+
+On your first visit, you'll be prompted to create your first API key.
+
+<Steps>
+  <Step title="Name your key">
+    Give it a name like "Production Agent" or "Claude Code".
+  </Step>
+  <Step title="Copy the key">
+    Copy the key immediately. It starts with `sk_live_` and **won't be shown again**.
+  </Step>
+</Steps>
+
+<Warning>
+Store your key securely. If you lose it, you'll need to create a new one.
+</Warning>
+
+## 3. Deposit Funds
+
+<Steps>
+  <Step title="Navigate to Wallet">
+    Go to **Wallet** in the sidebar.
+  </Step>
+  <Step title="Click Deposit">
+    Click the **Deposit** button to add credits to your account.
+  </Step>
+</Steps>
+
+<Note>
+Deposits are coming soon. During beta, contact cheng@payo.dev for credits.
+</Note>
+
+## 4. Configure Your Agent
+
+Configure your MCP client to pass the agent token when connecting to paid MCP servers.
+
+<Tabs>
+  <Tab title="Claude Code">
+    Use the Claude CLI to add MCP servers with your token:
+
+    ```bash
+    claude mcp add weather-api --transport http https://mcp.example.com/mcp \
+      --header "Authorization: Bearer sk_live_your_token_here"
+    ```
+
+    For servers using stdio transport:
+
+    ```bash
+    claude mcp add weather-api -- npx @example/weather-mcp
+    ```
+
+    Then set the environment variable in your Claude Code settings or export it:
+
+    ```bash
+    export AGENT_TOKEN=sk_live_your_token_here
+    ```
+  </Tab>
+  <Tab title="Claude Desktop">
+    Edit your Claude Desktop config file:
+
+    **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+    **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+    ```json claude_desktop_config.json
+    {
+      "mcpServers": {
+        "weather-api": {
+          "command": "npx",
+          "args": ["-y", "@example/weather-mcp"],
+          "env": {
+            "AGENT_TOKEN": "sk_live_your_token_here"
+          }
+        }
+      }
+    }
+    ```
+
+    The `AGENT_TOKEN` environment variable is passed to the MCP server, which the Payo SDK reads for authentication.
+  </Tab>
+  <Tab title="Cursor">
+    Edit your Cursor MCP config:
+
+    **macOS**: `~/.cursor/mcp.json`
+    **Windows**: `%USERPROFILE%\.cursor\mcp.json`
+
+    ```json mcp.json
+    {
+      "mcpServers": {
+        "weather-api": {
+          "command": "npx",
+          "args": ["-y", "@example/weather-mcp"],
+          "env": {
+            "AGENT_TOKEN": "sk_live_your_token_here"
+          }
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="HTTP Client">
+    If your agent connects to MCP servers over HTTP, pass the token in the Authorization header:
+
+    ```typescript
+    const response = await fetch('https://mcp.example.com/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer sk_live_your_token_here'
+      },
+      body: JSON.stringify({
+        method: 'tools/call',
+        params: { name: 'get_weather', arguments: { city: 'NYC' } }
+      })
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## 5. Make a Tool Call
+
+Now when your agent calls a paid tool, Payo will automatically:
+
+1. Validate your token
+2. Check your balance
+3. Charge the tool's price
+4. Execute the tool
+
+If the tool costs \$0.01 and you have \$10 in credits, you can make 1,000 calls.
+
+## Monitoring Usage
+
+View your transaction history in the **Wallet** page. Each charge shows:
+
+- Tool name
+- Amount charged
+- Provider
+- Timestamp
+
+## Error Handling
+
+If a tool call fails due to payment issues, you'll see one of these errors:
+
+| Error | Meaning | Fix |
+|-------|---------|-----|
+| `TOKEN_MISSING` | Token not configured | Add `AGENT_TOKEN` to your config |
+| `TOKEN_INVALID` | Token is invalid or deleted | Create a new key at payo.dev |
+| `INSUFFICIENT_BALANCE` | Not enough credits | Deposit more funds |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Multiple Servers" icon="server" href="/guides/agent/configuration">
+    Learn about different transport methods
+  </Card>
+  <Card title="Manage API Keys" icon="key" href="/guides/agent/api-keys">
+    Create, rotate, and delete keys
+  </Card>
+  <Card title="Monitor Usage" icon="chart-line" href="/guides/agent/deposits">
+    Track spending and top up credits
+  </Card>
+  <Card title="How It Works" icon="diagram-project" href="/how-it-works">
+    Understand the payment flow
+  </Card>
+</CardGroup>

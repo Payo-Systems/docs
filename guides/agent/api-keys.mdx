@@ -1,0 +1,111 @@
+---
+title: "Managing API Keys"
+description: "Create, rotate, and manage your agent API keys"
+---
+
+## Overview
+
+Agent API keys (tokens) authenticate your agent when calling paid MCP tools. Each key has scope `agent:connect` which allows connecting to MCP servers and being charged for tool calls.
+
+## Creating Keys
+
+<Steps>
+  <Step title="Go to API Keys">
+    Navigate to **API Keys** in your dashboard sidebar.
+  </Step>
+  <Step title="Click Create Key">
+    Click the **Create Key** button.
+  </Step>
+  <Step title="Name your key">
+    Give it a descriptive name like "Production", "Development", or "Claude Desktop".
+  </Step>
+  <Step title="Copy immediately">
+    The full key is shown **once**. Copy it and store it securely.
+  </Step>
+</Steps>
+
+<Warning>
+You cannot retrieve a key after creation. If you lose it, create a new one and delete the old one.
+</Warning>
+
+## Key Format
+
+Agent keys follow this format:
+
+```
+sk_live_a1b2c3d4e5f6...
+```
+
+- `sk_` - Secret key prefix
+- `live_` - Production environment
+- `a1b2...` - 64 random hex characters
+
+The dashboard shows only the prefix and last 4 characters for identification:
+
+```
+sk_live_...x7z9
+```
+
+## Multiple Keys
+
+Create separate keys for different purposes:
+
+| Key Name | Use Case |
+|----------|----------|
+| `Production` | Your deployed agent |
+| `Development` | Local testing |
+| `Claude Desktop` | Personal use |
+| `Cursor` | IDE integration |
+
+Each key shares your account balance but can be revoked independently.
+
+## Rotating Keys
+
+To rotate a key:
+
+<Steps>
+  <Step title="Create a new key">
+    Create a new key with the same name (add "v2" or date).
+  </Step>
+  <Step title="Update your agents">
+    Update your agent configurations to use the new key.
+  </Step>
+  <Step title="Delete the old key">
+    Once all agents are updated, delete the old key.
+  </Step>
+</Steps>
+
+<Note>
+Deleting a key is immediate and permanent. Any agents still using it will receive `TOKEN_INVALID` errors.
+</Note>
+
+## Deleting Keys
+
+To delete a key:
+
+1. Go to **API Keys**
+2. Find the key you want to delete
+3. Click the **Delete** button (trash icon)
+4. Confirm deletion
+
+Deleted keys cannot be recovered.
+
+## Troubleshooting
+
+### "TOKEN_INVALID" Error
+
+Your key may be:
+- Deleted from the dashboard
+- Incorrectly copied (missing characters)
+- From a different account
+
+**Fix**: Create a new key and update your configuration.
+
+### "TOKEN_MISSING" Error
+
+The MCP server didn't receive your token. Check:
+- `AGENT_TOKEN` environment variable is set
+- HTTP `Authorization` header is being sent
+- No typos in your configuration
+
+See [Configuring Your Agent](/guides/agent/configuration) for setup help.
